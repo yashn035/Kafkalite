@@ -51,3 +51,8 @@ CONCISE, BULLET-PROOF ANSWERS TO THE 10 HARDEST DISTRIBUTED SYSTEMS QUESTIONS
 
 ### Q10: If I wanted exactly-once semantics (idempotent producer), how would you modify your `segment.go` to handle this?
 > *"We would modify the binary protocol request in [protocol.go](file:///c:/Users/yashn/KafkaLite/internal/protocol/protocol.go) and [segment.go](file:///c:/Users/yashn/KafkaLite/internal/storage/segment.go) to include a unique `ProducerID` and a monotonically increasing `SequenceNumber` for each batch. The broker segment would track the latest sequence number written per `ProducerID` in-memory. If a duplicate sequence number is received (indicating a retry), the broker discards the write and returns the cached offset, preventing duplicate records."*
+
+---
+
+### Q11: How does your client handle the "Not Leader" error?
+> *"When a producer writes to a broker that is no longer the partition leader, the broker returns a 'Not Leader' error status code. Upon receiving this status, the client catches the error, pauses for a brief backoff period to allow election convergence, and dials the other seed brokers to request the latest partition routing catalog. It then updates its local routing cache and retries the publish request against the newly elected partition leader, ensuring zero message drops during failover."*

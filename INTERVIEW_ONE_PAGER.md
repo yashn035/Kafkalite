@@ -10,8 +10,11 @@ For a distributed commit log, data is naturally append-only. By writing records 
 To map logical offsets to physical byte positions, we built a custom binary **Sparse Index** in [index.go](file:///c:/Users/yashn/KafkaLite/internal/storage/index.go). Instead of indexing every record, it registers a checkpoint every 4KB of log data. During read queries, the engine performs a fast binary search over the in-memory index to locate the closest physical offset, then performs a lightweight sequential scan. This reduces index memory footprint by **99%** while keeping search times sub-millisecond.
 
 ### B. Custom Binary TCP Protocol vs. gRPC/HTTP/JSON
-While gRPC (via HTTP/2 and Protocol Buffers) or HTTP/JSON are standard in big-tech microservices, they introduce significant CPU overhead due to reflection, base64 encoding, and complex connection state management. 
-For KafkaLite, we engineered a custom length-prefixed binary framing protocol in [protocol.go](file:///c:/Users/yashn/KafkaLite/internal/protocol/protocol.go). The frame starts with a 4-byte payload length, followed by a single-byte request type and flat binary payloads. By using direct byte slices, we bypass the serialization/deserialization CPU bottleneck, achieve zero-copy allocations, and gain complete control over network backpressure.
+While gRPC (via HTTP/2 and Protocol Buffers) or HTTP/JSON are standard in big-tech microservices, they introduce significant CPU bottlenecks due to serialization reflection, base64 data expansions, header decompression tables (HPACK), and multi-threaded multiplexing overhead. 
+For KafkaLite, we engineered a custom length-prefixed binary framing protocol in [protocol.go](file:///c:/Users/yashn/KafkaLite/internal/protocol/protocol.go). The frame starts with a 4-byte payload length, followed by a single-byte request type and flat binary payloads. By using raw TCP sockets directly:
+1. **Zero-Copy Serialization**: We parse incoming network byte slices using pointer arithmetic (`binary.BigEndian` reads) instead of Go reflection or Protobuf heap allocations.
+2. **Backpressure Propagation**: TCP flow control (the window size advertisement) naturally blocks the client socket write threads if the broker disk flush pipelines fall behind, preventing memory exhaustion under spikes.
+3. **Reduced Framing Cost**: We avoid HTTP/2 data block segmentations and header parsing, maximizing socket throughput.
 
 ### C. Synchronous Leader-Follower Replication with `min.insync.replicas=1`
 We balanced availability and consistency under the PACELC theorem. KafkaLite replication ([replication.go](file:///c:/Users/yashn/KafkaLite/internal/broker/replication.go)) uses a synchronous leader-follower architecture. 

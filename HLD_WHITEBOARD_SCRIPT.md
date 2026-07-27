@@ -36,3 +36,17 @@ This script prepares you to present the architectural design of **KafkaLite** in
 * **What to Draw**: Draw two boxes at the bottom labeled `Consumer A` and `Consumer B`. Show arrows pointing from `Consumer A` to `Broker-0 (Partition 0)` and `Consumer B` to `Broker-1 (Partition 1)`. Inside the brokers, draw a box labeled `GroupCoordinator` pointing to a rebalance list.
 * **What to Say**:
   > *"Finally, we scale consumption using Consumer Groups managed by `GroupCoordinator` ([group_coordinator.go](file:///c:/Users/yashn/KafkaLite/internal/consumer/group_coordinator.go)). When consumers join the group, the coordinator tracks them and executes a **Range Assignor** rebalancing algorithm. It divides partitions 0 and 1 of the topic alphabetically among active members, ensuring they share the partition load without duplicate processing. Consumers read their assigned partitions and periodically commit their progress to the offset store via `ReqOffsetCommit` ([offset_manager.go](file:///c:/Users/yashn/KafkaLite/internal/consumer/offset_manager.go)), which flushes progress to disk with `fsync` for complete state recovery."*
+
+---
+
+## 🎨 Step 6: Background Retention & Compaction Janitor (Draw Compaction Merge)
+* **What to Draw**: Draw a partition folder containing `000.log` (100MB, closed) and `001.log` (active). Draw a trash can icon next to `000.log` with a dotted line indicating a background pruner thread. Draw a merge symbol (two arrows combining into one) showing records inside `000.log` with duplicate keys (`key-1`) being rewritten to a new compacted segment containing only the latest offset.
+* **What to Say**:
+  > *"To ensure that our broker doesn't run out of disk space under continuous write streams, we implement background retention and key-based compaction janitor tasks ([retention.go](file:///c:/Users/yashn/KafkaLite/internal/broker/retention.go)). The retention loop checks segment timestamps and prunes segments older than 7 days, or deletes the oldest segments if the partition size exceeds 1GB. Additionally, key compaction deduplicates messages in closed segments by scanning sequentially and writing only the latest value for each unique key to a temporary consolidated segment, saving storage space without impacting active client operations."*
+
+---
+
+## 🎨 Step 7: Client Failover Routing (Draw Reconnection Loop)
+* **What to Draw**: Draw the `Producer` client box with a circular refresh arrow. Draw an arrow pointing from the client to `Broker-0` labeled `X` (Connection Failed). Draw a recovery arrow pointing to `Broker-1` labeled `Produce Retry (Status OK)`.
+* **What to Say**:
+  > *"When a partition leader crashes, clients need to failover gracefully without crashing or dropping packets. Our client ([main.go (Client)](file:///c:/Users/yashn/KafkaLite/cmd/client/main.go)) implements an active retry and metadata refresh loop. If a write fails with a connection error or a 'Not Leader' status code, the client pauses for a backoff window, queries the next active broker in the seed list for the latest partition leader, updates its local metadata cache, and automatically retries the operation against the new leader. This guarantees complete client-side resilience under network and node failure scenarios."*

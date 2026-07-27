@@ -61,6 +61,7 @@ graph TD
 - **Active Failover & Coordination**: Background TCP health checks and metadata lock synchronization (`leaders.json.lock`) to automatically handle partition leader re-allocations if nodes crash.
 - **Load-Balanced Consumer Groups**: Generational consumer group coordinator with standard **Range Assignor** rebalancing partition slices across registered group consumers.
 - **Observability**: Exposes real-time prometheus metric vector endpoints on port `:8080/metrics` tracking broker throughput and latencies.
+- **One-Command Setup & HA Health Probes**: Features a single-command cluster simulation (`make demo`) and exposes `/health` endpoints acting as Kubernetes liveness/readiness probes validating disk write accessibility.
 
 ---
 
