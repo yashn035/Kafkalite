@@ -1,0 +1,11 @@
+/bin/
+/data/
+/tmp/
+*.test
+coverage.out
+.vscode/
+.idea/
+*.log
+*.index
+*.lock
+consumer_*.log

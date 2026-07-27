@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  broker-0:
+    build: .
+    ports:
+      - "9092:9092"
+      - "8080:8080"
+      - "8081:8081"
+    environment:
+      - KAFKALITE_BROKER_ID=0
+      - KAFKALITE_LISTEN_ADDRESS=0.0.0.0:9092
+      - KAFKALITE_DATA_DIR=/data/broker-0
+    volumes:
+      - kafkalite-data:/data
+    command: ["-id", "0"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  broker-1:
+    build: .
+    ports:
+      - "9093:9092"
+      - "8082:8080"
+      - "8083:8081"
+    environment:
+      - KAFKALITE_BROKER_ID=1
+      - KAFKALITE_LISTEN_ADDRESS=0.0.0.0:9092
+      - KAFKALITE_DATA_DIR=/data/broker-1
+    volumes:
+      - kafkalite-data:/data
+    command: ["-id", "1", "-leader", "broker-0:9092"]
+    depends_on:
+      broker-0:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  broker-2:
+    build: .
+    ports:
+      - "9094:9092"
+      - "8084:8080"
+      - "8085:8081"
+    environment:
+      - KAFKALITE_BROKER_ID=2
+      - KAFKALITE_LISTEN_ADDRESS=0.0.0.0:9092
+      - KAFKALITE_DATA_DIR=/data/broker-2
+    volumes:
+      - kafkalite-data:/data
+    command: ["-id", "2", "-leader", "broker-0:9092"]
+    depends_on:
+      broker-0:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  kafkalite-data:
