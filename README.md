@@ -66,19 +66,26 @@ graph TD
 
 ## 🚀 Quickstart
 
+### 🐳 Quick Run with Docker
+Start a KafkaLite broker instance in 10 seconds:
+```bash
+docker run -p 9092:9092 -p 8080:8080 yashn035/kafkalite:latest
+```
+
+### 🛠️ Build and Verify Locally
 Verify compiling, unit test scopes, and run the automated failover demo using the Makefile:
 
-### 1. Compile binaries
+#### 1. Compile binaries
 ```bash
 make build
 ```
 
-### 2. Run automated tests
+#### 2. Run automated tests
 ```bash
 make test
 ```
 
-### 3. Run the ultimate cluster failover demo
+#### 3. Run the ultimate cluster failover demo
 ```bash
 make demo
 ```
@@ -109,6 +116,24 @@ Running the bench target (`make bench`) produces performance metrics on standard
   - `broker/`: Leadership coordination, leader-follower sync manager, and time/size-based log pruning retention.
 - `pkg/`
   - `metrics/`: Exposes Prometheus metrics vector registers.
+
+---
+
+## 📊 Grafana Dashboard Import
+We expose Prometheus metric vectors natively. To visualize your cluster metrics (produced messages rates, p99 latency, partition log sizes) in real-time:
+1. Setup a Grafana server pointing to your Prometheus datasource.
+2. Import the pre-configured [dashboard.json](file:///c:/Users/yashn/KafkaLite/grafana/dashboard.json) file located inside the `grafana/` directory.
+
+---
+
+## ⚖️ How is KafkaLite different from Apache Kafka?
+
+| Feature | KafkaLite | Apache Kafka |
+| :--- | :--- | :--- |
+| **Language** | Go (single compiled binary) | Java (requires heavy JVM) |
+| **Consensus** | Shared File-locks (simplified) | KRaft / Zookeeper |
+| **Memory Footprint** | ~50MB RAM | ~1GB+ RAM |
+| **Use Case** | Edge, IoT, Local Dev, Education | High-scale Enterprise Production |
 
 ---
 
