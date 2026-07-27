@@ -1,5 +1,7 @@
 # KafkaLite
 
+[![CI](https://github.com/yashn035/Kafkalite/actions/workflows/ci.yml/badge.svg)](https://github.com/yashn035/Kafkalite/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/yashn035/Kafkalite)](https://goreportcard.com/report/github.com/yashn035/Kafkalite)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/yashn/KafkaLite?logo=go)](https://golang.org)
 [![License](https://img.shields.io/github/license/yashn/KafkaLite)](LICENSE)
 [![Docker Pulls](https://img.shields.io/docker/pulls/yashn/kafkalite?logo=docker)](https://hub.docker.com)
