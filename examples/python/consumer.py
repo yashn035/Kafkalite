@@ -62,4 +62,4 @@ def consume(addr, topic, offset, max_bytes):
     s.close()
 
 if __name__ == "__main__":
-    consume(('localhost', 9092), 'test-0', 0, 65536)
+    consume(('localhost', 9092), 'test', 0, 65536)
