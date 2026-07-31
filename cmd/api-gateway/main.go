@@ -18,6 +18,8 @@ import (
 	"kafkalite/internal/ai"
 	"kafkalite/internal/auth"
 	"kafkalite/internal/protocol"
+	"net/http/httputil"
+	"net/url"
 )
 
 func corsMiddleware(next http.Handler) http.Handler {
@@ -39,6 +41,7 @@ func authMiddleware(next http.Handler) http.Handler {
 		   r.URL.Path == "/favicon.ico" ||
 		   r.URL.Path == "/health" ||
 		   r.URL.Path == "/auth" ||
+		   strings.HasPrefix(r.URL.Path, "/ws/") ||
 		   strings.HasPrefix(r.URL.Path, "/static/") ||
 		   strings.HasSuffix(r.URL.Path, ".css") ||
 		   strings.HasSuffix(r.URL.Path, ".js") ||
@@ -327,6 +330,21 @@ func main() {
 			fmt.Fprintf(w, `<html><body><h1>KafkaLite API Gateway</h1><p>Frontend not found. Please check the deployment.</p></body></html>`)
 		})
 	}
+
+	mux.HandleFunc("/ws/", func(w http.ResponseWriter, r *http.Request) {
+		proxy := httputil.NewSingleHostReverseProxy(&url.URL{
+			Scheme: "http",
+			Host:   "localhost:8083",
+		})
+		proxy.Director = func(req *http.Request) {
+			req.URL.Scheme = "http"
+			req.URL.Host = "localhost:8083"
+			req.URL.Path = r.URL.Path
+			req.Header.Set("X-Forwarded-For", r.RemoteAddr)
+			req.Header.Set("X-Forwarded-Proto", "https")
+		}
+		proxy.ServeHTTP(w, r)
+	})
 
 	fmt.Printf("API Gateway listening on %s\n", *addr)
 	log.Fatal(http.ListenAndServe(*addr, corsMiddleware(authMiddleware(mux))))
