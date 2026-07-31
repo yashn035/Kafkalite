@@ -35,7 +35,15 @@ func corsMiddleware(next http.Handler) http.Handler {
 
 func authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/health" || r.URL.Path == "/auth" {
+		if r.URL.Path == "/" ||
+		   r.URL.Path == "/favicon.ico" ||
+		   r.URL.Path == "/health" ||
+		   r.URL.Path == "/auth" ||
+		   strings.HasPrefix(r.URL.Path, "/static/") ||
+		   strings.HasSuffix(r.URL.Path, ".css") ||
+		   strings.HasSuffix(r.URL.Path, ".js") ||
+		   strings.HasSuffix(r.URL.Path, ".png") ||
+		   strings.HasSuffix(r.URL.Path, ".ico") {
 			next.ServeHTTP(w, r)
 			return
 		}
