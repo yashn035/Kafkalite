@@ -3,7 +3,6 @@ services:
     name: kafkalite-api
     env: docker
     dockerfilePath: ./Dockerfile
-    dockerCommand: ./api-gateway
     envVars:
       - key: PORT
         value: 8082

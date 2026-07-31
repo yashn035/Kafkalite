@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -78,6 +80,14 @@ func readAuthResponse(r io.Reader) error {
 }
 
 func main() {
+	addr := flag.String("addr", ":8082", "API Gateway bind address")
+	brokerAddr := flag.String("broker", "broker-0:9092", "Broker address to connect to")
+	flag.Parse()
+
+	if portEnv := os.Getenv("PORT"); portEnv != "" && *addr == ":8082" {
+		*addr = ":" + portEnv
+	}
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/topics", func(w http.ResponseWriter, r *http.Request) {
@@ -107,7 +117,7 @@ func main() {
 			return
 		}
 
-		conn, err := net.Dial("tcp", "broker-0:9092")
+		conn, err := net.Dial("tcp", *brokerAddr)
 		if err != nil {
 			http.Error(w, "Broker unavailable", http.StatusInternalServerError)
 			return
@@ -151,7 +161,7 @@ func main() {
 
 		topic := r.URL.Query().Get("topic")
 		dialer := net.Dialer{}
-		conn, err := dialer.DialContext(ctx, "tcp", "broker-0:9092")
+		conn, err := dialer.DialContext(ctx, "tcp", *brokerAddr)
 		if err != nil {
 			http.Error(w, "Broker unavailable", http.StatusServiceUnavailable)
 			return
@@ -218,7 +228,7 @@ func main() {
 			return
 		}
 
-		conn, err := net.Dial("tcp", "broker-0:9092")
+		conn, err := net.Dial("tcp", *brokerAddr)
 		if err != nil {
 			http.Error(w, "Broker unavailable", http.StatusInternalServerError)
 			return
@@ -256,6 +266,11 @@ func main() {
 		json.NewEncoder(w).Encode(insights)
 	})
 
-	fmt.Println("API Gateway listening on :8082")
-	log.Fatal(http.ListenAndServe(":8082", corsMiddleware(authMiddleware(mux))))
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok"}`))
+	})
+
+	fmt.Printf("API Gateway listening on %s\n", *addr)
+	log.Fatal(http.ListenAndServe(*addr, corsMiddleware(authMiddleware(mux))))
 }
