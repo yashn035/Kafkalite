@@ -101,11 +101,21 @@ async function apiFetch(endpoint, options = {}) {
 
 // WebSocket
 function initWebSocket() {
+    const token = getToken();
+    const badge = document.getElementById('wsStatus');
+
+    if (!token) {
+        console.warn('No token, WebSocket not connecting');
+        badge.className = 'badge bg-warning text-dark';
+        badge.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i> No Token';
+        return;
+    }
+
     // Determine WebSocket protocol based on current page protocol (ws or wss for https tunnels)
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsHost = window.location.host;
-    const ws = new WebSocket(`${protocol}//${wsHost}/ws/metrics?token=${jwtToken}`);
-    const badge = document.getElementById('wsStatus');
+    const wsUrl = `${protocol}//${wsHost}/ws/metrics?token=${encodeURIComponent(token)}`;
+    const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
         badge.className = 'badge bg-success';
