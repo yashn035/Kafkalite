@@ -16,6 +16,7 @@ COPY --from=builder /app/broker .
 COPY --from=builder /app/client .
 COPY --from=builder /app/api-gateway .
 COPY --from=builder /app/configs/server.yaml ./configs/server.yaml
+COPY --from=builder /app/web/frontend ./web/frontend
 COPY start.sh .
 RUN chmod +x start.sh
 EXPOSE 9092 8080 8082

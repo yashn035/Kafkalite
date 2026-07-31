@@ -297,8 +297,6 @@ func main() {
 			return
 		}
 
-		// Connect to broker to authenticate (or just statically check for demo)
-		// For simplicity, mimicking the auth flow:
 		if body.Username == "admin" && body.Password == "admin123" {
 			token, err := auth.GenerateJWT("admin", "admin")
 			if err != nil {
@@ -312,6 +310,23 @@ func main() {
 		
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 	})
+
+	// Serve static frontend files
+	frontendDir := "web/frontend"
+	if _, err := os.Stat(frontendDir); err == nil {
+		fs := http.FileServer(http.Dir(frontendDir))
+		mux.Handle("/", fs)
+	} else {
+		// Fallback: return a simple HTML page
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/" {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "text/html")
+			fmt.Fprintf(w, `<html><body><h1>KafkaLite API Gateway</h1><p>Frontend not found. Please check the deployment.</p></body></html>`)
+		})
+	}
 
 	fmt.Printf("API Gateway listening on %s\n", *addr)
 	log.Fatal(http.ListenAndServe(*addr, corsMiddleware(authMiddleware(mux))))
