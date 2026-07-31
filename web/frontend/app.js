@@ -1,5 +1,10 @@
 const API_BASE = '/api';
-let jwtToken = localStorage.getItem('kafkalite_jwt') || '';
+
+function getToken() {
+    return localStorage.getItem('kafkalite_jwt') || '';
+}
+
+let jwtToken = getToken();
 let chart;
 
 // Authentication Modal
@@ -78,11 +83,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-function getHeaders() {
-    return {
-        'Authorization': `Bearer ${jwtToken}`,
-        'Content-Type': 'application/json'
+async function apiFetch(endpoint, options = {}) {
+    const token = getToken();
+    const headers = {
+        'Content-Type': 'application/json',
+        ...options.headers,
     };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    
+    // Check if endpoint is full URL or relative
+    const url = endpoint.startsWith('http') || endpoint.startsWith('/') && !endpoint.startsWith('/api') 
+        ? endpoint 
+        : `${API_BASE}${endpoint.startsWith('/') ? endpoint : '/'+endpoint}`;
+        
+    return fetch(url, { ...options, headers });
 }
 
 // WebSocket
@@ -129,7 +143,7 @@ function initWebSocket() {
 // API Calls
 async function fetchTopics() {
     try {
-        const res = await fetch(`${API_BASE}/topics`, { headers: getHeaders() });
+        const res = await apiFetch('/topics');
         if (res.ok) {
             const topics = await res.json();
             const list = document.getElementById('topicList');
@@ -167,9 +181,8 @@ async function produceMessage(e) {
     const resultDiv = document.getElementById('produceResult');
 
     try {
-        const res = await fetch(`${API_BASE}/produce`, {
+        const res = await apiFetch('/produce', {
             method: 'POST',
-            headers: getHeaders(),
             body: JSON.stringify({ topic, key, value, message_id, producer_id })
         });
         
@@ -194,12 +207,11 @@ async function consumeMessages(e) {
 
     try {
         resultPre.innerText = "Fetching...";
-        let url = `${API_BASE}/consume?topic=${topic}&max=10`;
+        let url = `/consume?topic=${topic}&max=10`;
         if (start_time) url += `&start_time=${start_time}`;
         if (end_time) url += `&end_time=${end_time}`;
         
-        const res = await fetch(url, { 
-            headers: getHeaders(),
+        const res = await apiFetch(url, { 
             signal: AbortSignal.timeout(10000)
         });
         if (res.ok) {
@@ -228,9 +240,8 @@ async function registerSchema(e) {
     const resultDiv = document.getElementById('schemaResult');
 
     try {
-        const res = await fetch(`${API_BASE}/schemas`, {
+        const res = await apiFetch('/schemas', {
             method: 'POST',
-            headers: getHeaders(),
             body: JSON.stringify({ topic, schema })
         });
         if (res.ok) {
@@ -249,7 +260,7 @@ async function fetchInsights() {
     list.innerHTML = '<p class="text-muted">Analyzing...</p>';
     
     try {
-        const res = await fetch(`${API_BASE}/ai/insights`, { headers: getHeaders() });
+        const res = await apiFetch('/ai/insights');
         if (res.ok) {
             const data = await res.json();
             cpuSpan.innerText = (data.cpu_load_percent || 0).toFixed(1);
