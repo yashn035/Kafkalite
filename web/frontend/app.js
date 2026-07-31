@@ -104,7 +104,7 @@ function initWebSocket() {
     // Determine WebSocket protocol based on current page protocol (ws or wss for https tunnels)
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsHost = window.location.host;
-    const ws = new WebSocket(`${protocol}//${wsHost}/ws/ws/metrics?token=${jwtToken}`);
+    const ws = new WebSocket(`${protocol}//${wsHost}/ws/metrics?token=${jwtToken}`);
     const badge = document.getElementById('wsStatus');
 
     ws.onopen = () => {
