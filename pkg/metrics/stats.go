@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"time"
+	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -52,9 +53,32 @@ func RecordProduce(topic string, size int64, duration time.Duration) {
 	MessagesProduced.WithLabelValues(topic).Inc()
 	ProduceLatency.WithLabelValues(topic).Observe(duration.Seconds())
 	PartitionSize.WithLabelValues(topic).Set(float64(size))
+	
+	mu.Lock()
+	stats.MessagesProduced++
+	mu.Unlock()
 }
 
 func RecordConsume(topic string, count int) {
 	MessagesConsumed.WithLabelValues(topic).Add(float64(count))
+	
+	mu.Lock()
+	stats.MessagesConsumed += int64(count)
+	mu.Unlock()
 }
-type DummyStruct struct{} // Avoid golint empty file warnings
+
+type Stats struct {
+	MessagesProduced int64
+	MessagesConsumed int64
+}
+
+var (
+	mu sync.Mutex
+	stats Stats
+)
+
+func GetStats() Stats {
+	mu.Lock()
+	defer mu.Unlock()
+	return stats
+}

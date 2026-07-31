@@ -12,3 +12,14 @@ min:
     replicas: 1
 replication:
   peers: []
+
+exactly_once:
+  enabled: true
+schema:
+  registry:
+    enabled: true
+ai:
+  analyzer:
+    enabled: true
+rebalance:
+  interval: 30s

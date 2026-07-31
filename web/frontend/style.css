@@ -1,0 +1,56 @@
+body {
+    background-color: #121212 !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+#wrapper {
+    overflow-x: hidden;
+    min-height: 100vh;
+}
+
+#sidebar-wrapper {
+    min-height: 100vh;
+    width: 250px;
+    background-color: #1a1a1a !important;
+}
+
+.list-group-item {
+    padding: 1rem 1.5rem;
+    transition: all 0.2s ease;
+}
+
+.list-group-item:hover, .list-group-item.active {
+    background-color: #2d2d2d !important;
+    border-left: 4px solid #0d6efd !important;
+    color: #fff !important;
+}
+
+.bg-secondary {
+    background-color: #1e1e1e !important;
+}
+
+.card {
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    border-radius: 8px;
+}
+
+.stat-card {
+    transition: transform 0.2s;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+}
+
+.form-control {
+    box-shadow: none !important;
+}
+
+.form-control:focus {
+    border-color: #0d6efd;
+}
+
+pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}

@@ -1,9 +1,28 @@
-.PHONY: build test docker-build demo bench lint clean
+BIN_DIR := ./bin
 
-build:
-	@mkdir -p bin
-	go build -o ./bin/broker ./cmd/broker
-	go build -o ./bin/client ./cmd/client
+.PHONY: build test docker-build demo bench lint clean build-broker build-client build-api-gateway build-auth-cli build-dlq-replay
+
+build: build-broker build-client build-api-gateway build-auth-cli build-dlq-replay
+
+build-broker:
+	@mkdir -p $(BIN_DIR)
+	go build -o $(BIN_DIR)/broker ./cmd/broker
+
+build-client:
+	@mkdir -p $(BIN_DIR)
+	go build -o $(BIN_DIR)/client ./cmd/client
+
+build-api-gateway:
+	@mkdir -p $(BIN_DIR)
+	go build -o $(BIN_DIR)/api-gateway ./cmd/api-gateway
+
+build-auth-cli:
+	@mkdir -p $(BIN_DIR)
+	go build -o $(BIN_DIR)/auth-cli ./cmd/auth-cli
+
+build-dlq-replay:
+	@mkdir -p $(BIN_DIR)
+	go build -o $(BIN_DIR)/dlq-replay ./cmd/dlq-replay
 
 test:
 	go test ./... -race -cover
@@ -20,12 +39,10 @@ else
 endif
 
 bench:
-	@echo "Benchmark requires a running cluster. Starting temp cluster..."
-	docker-compose up -d --build
-	@sleep 5
-	go run cmd/client/main.go --benchmark produce --messages 100000
-	go run cmd/client/main.go --benchmark consume
-	@docker-compose down -v
+	@echo "Running benchmarking script..."
+	@mkdir -p scripts
+	@chmod +x scripts/benchmark.sh
+	./scripts/benchmark.sh
 
 lint:
 	golangci-lint run ./...

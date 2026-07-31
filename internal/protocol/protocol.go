@@ -15,6 +15,8 @@ const (
 	ReqOffsetFetch  byte = 6
 	ReqJoinGroup    byte = 10
 	ReqSyncGroup    byte = 11
+	ReqAuthenticate byte = 20
+	ReqRegisterSchema byte = 30
 
 	StatusOk  byte = 0
 	StatusErr byte = 1
@@ -30,13 +32,24 @@ type Request struct {
 	GroupID   string
 	Partition int32
 	MemberID  string
-	Topics    []string
+	Topics         []string
+	ProducerID     int64
+	SequenceNumber int32
+	MessageID      string
+	Username       string
+	Password       string
+	Success        bool
+	StartTime      int64
+	EndTime        int64
+	ProcessedIDs   []string
+	SchemaDef      string
 }
 
 type Record struct {
-	Offset int64
-	Key    []byte
-	Value  []byte
+	Timestamp int64
+	Offset    int64
+	Key       []byte
+	Value     []byte
 }
 
 type Response struct {
@@ -46,20 +59,21 @@ type Response struct {
 	ErrMsg     string
 	Generation int
 	Assignment map[string][]int32
+	Token      string
 }
 
 func getRequestPayloadSize(req *Request, topicLen int) int32 {
 	if req.Type == ReqProduce {
-		return 1 + 2 + int32(topicLen) + 4 + int32(len(req.Key)) + 4 + int32(len(req.Value))
+		return 1 + 2 + int32(topicLen) + 8 + 4 + 4 + int32(len(req.Key)) + 4 + int32(len(req.Value)) + 2 + int32(len(req.MessageID))
 	}
 	if req.Type == ReqReplicate {
-		return 1 + 2 + int32(topicLen) + 8 + 4 + int32(len(req.Key)) + 4 + int32(len(req.Value))
+		return 1 + 2 + int32(topicLen) + 8 + 8 + 4 + 4 + int32(len(req.Key)) + 4 + int32(len(req.Value))
 	}
 	if req.Type == ReqJoinReplica {
 		return 1 + 2 + int32(topicLen)
 	}
 	if req.Type == ReqOffsetCommit {
-		return 1 + 2 + int32(len(req.GroupID)) + 2 + int32(topicLen) + 4 + 8
+		return 1 + 2 + int32(len(req.GroupID)) + 2 + int32(topicLen) + 4 + 8 + 1
 	}
 	if req.Type == ReqOffsetFetch {
 		return 1 + 2 + int32(len(req.GroupID)) + 2 + int32(topicLen) + 4
@@ -74,35 +88,57 @@ func getRequestPayloadSize(req *Request, topicLen int) int32 {
 	if req.Type == ReqSyncGroup {
 		return 1 + 2 + int32(len(req.GroupID)) + 2 + int32(len(req.MemberID))
 	}
+	if req.Type == ReqAuthenticate {
+		return 1 + 2 + int32(len(req.Username)) + 2 + int32(len(req.Password))
+	}
 	return 1 + 2 + int32(topicLen) + 8 + 4
 }
 
-func writeProducePayload(w io.Writer, key, value []byte) error {
-	if err := binary.Write(w, binary.BigEndian, uint32(len(key))); err != nil {
+func writeProducePayload(w io.Writer, req *Request) error {
+	if err := binary.Write(w, binary.BigEndian, req.ProducerID); err != nil {
 		return err
 	}
-	if _, err := w.Write(key); err != nil {
+	if err := binary.Write(w, binary.BigEndian, req.SequenceNumber); err != nil {
 		return err
 	}
-	if err := binary.Write(w, binary.BigEndian, uint32(len(value))); err != nil {
+	if err := binary.Write(w, binary.BigEndian, uint32(len(req.Key))); err != nil {
 		return err
 	}
-	_, err := w.Write(value)
+	if _, err := w.Write(req.Key); err != nil {
+		return err
+	}
+	if err := binary.Write(w, binary.BigEndian, uint32(len(req.Value))); err != nil {
+		return err
+	}
+	if _, err := w.Write(req.Value); err != nil {
+		return err
+	}
+	msgBytes := []byte(req.MessageID)
+	if err := binary.Write(w, binary.BigEndian, uint16(len(msgBytes))); err != nil {
+		return err
+	}
+	_, err := w.Write(msgBytes)
 	return err
 }
 
-func writeConsumePayload(w io.Writer, offset int64, maxBytes int32) error {
+func writeConsumePayload(w io.Writer, offset int64, maxBytes int32, startTime, endTime int64) error {
 	if err := binary.Write(w, binary.BigEndian, offset); err != nil {
 		return err
 	}
-	return binary.Write(w, binary.BigEndian, maxBytes)
+	if err := binary.Write(w, binary.BigEndian, maxBytes); err != nil {
+		return err
+	}
+	if err := binary.Write(w, binary.BigEndian, startTime); err != nil {
+		return err
+	}
+	return binary.Write(w, binary.BigEndian, endTime)
 }
 
 func writeReplicatePayload(w io.Writer, req *Request) error {
 	if err := binary.Write(w, binary.BigEndian, req.Offset); err != nil {
 		return err
 	}
-	return writeProducePayload(w, req.Key, req.Value)
+	return writeProducePayload(w, req)
 }
 
 func writeOffsetCommitPayload(w io.Writer, req *Request) error {
@@ -116,7 +152,25 @@ func writeOffsetCommitPayload(w io.Writer, req *Request) error {
 	if err := binary.Write(w, binary.BigEndian, req.Partition); err != nil {
 		return err
 	}
-	return binary.Write(w, binary.BigEndian, req.Offset)
+	if err := binary.Write(w, binary.BigEndian, req.Offset); err != nil {
+		return err
+	}
+	var s byte = 0
+	if req.Success {
+		s = 1
+	}
+	if _, err := w.Write([]byte{s}); err != nil {
+		return err
+	}
+	if err := binary.Write(w, binary.BigEndian, uint32(len(req.ProcessedIDs))); err != nil {
+		return err
+	}
+	for _, id := range req.ProcessedIDs {
+		if err := writeString16(w, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func writeOffsetFetchPayload(w io.Writer, req *Request) error {
@@ -166,6 +220,20 @@ func writeSyncGroupPayload(w io.Writer, req *Request) error {
 	return err
 }
 
+func writeAuthenticatePayload(w io.Writer, req *Request) error {
+	uBytes := []byte(req.Username)
+	if err := binary.Write(w, binary.BigEndian, uint16(len(uBytes))); err != nil {
+		return err
+	}
+	w.Write(uBytes)
+	pBytes := []byte(req.Password)
+	if err := binary.Write(w, binary.BigEndian, uint16(len(pBytes))); err != nil {
+		return err
+	}
+	_, err := w.Write(pBytes)
+	return err
+}
+
 func WriteRequest(w io.Writer, req *Request) error {
 	topicBytes := []byte(req.Topic)
 	payloadSize := getRequestPayloadSize(req, len(topicBytes))
@@ -183,22 +251,39 @@ func WriteRequest(w io.Writer, req *Request) error {
 		return err
 	}
 
-	if req.Type == ReqProduce {
-		return writeProducePayload(w, req.Key, req.Value)
-	} else if req.Type == ReqReplicate {
+	switch req.Type {
+	case ReqProduce:
+		return writeProducePayload(w, req)
+	case ReqConsume:
+		return writeConsumePayload(w, req.Offset, req.MaxBytes, req.StartTime, req.EndTime)
+	case ReqReplicate:
 		return writeReplicatePayload(w, req)
-	} else if req.Type == ReqJoinReplica {
+	case ReqJoinReplica:
 		return nil
-	} else if req.Type == ReqOffsetCommit {
+	case ReqOffsetCommit:
 		return writeOffsetCommitPayload(w, req)
-	} else if req.Type == ReqOffsetFetch {
+	case ReqOffsetFetch:
 		return writeOffsetFetchPayload(w, req)
-	} else if req.Type == ReqJoinGroup {
+	case ReqJoinGroup:
 		return writeJoinGroupPayload(w, req)
-	} else if req.Type == ReqSyncGroup {
+	case ReqSyncGroup:
 		return writeSyncGroupPayload(w, req)
+	case ReqAuthenticate:
+		return writeAuthenticatePayload(w, req)
+	case ReqRegisterSchema:
+		return writeString16(w, req.SchemaDef)
+	default:
+		return writeConsumePayload(w, req.Offset, req.MaxBytes, req.StartTime, req.EndTime)
 	}
-	return writeConsumePayload(w, req.Offset, req.MaxBytes)
+}
+
+func writeString16(w io.Writer, s string) error {
+	b := []byte(s)
+	if err := binary.Write(w, binary.BigEndian, uint16(len(b))); err != nil {
+		return err
+	}
+	_, err := w.Write(b)
+	return err
 }
 
 func readString16(r io.Reader) (string, error) {
@@ -214,6 +299,12 @@ func readString16(r io.Reader) (string, error) {
 }
 
 func readProducePayload(r io.Reader, req *Request) (*Request, error) {
+	if err := binary.Read(r, binary.BigEndian, &req.ProducerID); err != nil {
+		return nil, err
+	}
+	if err := binary.Read(r, binary.BigEndian, &req.SequenceNumber); err != nil {
+		return nil, err
+	}
 	var keyLen uint32
 	if err := binary.Read(r, binary.BigEndian, &keyLen); err != nil {
 		return nil, err
@@ -231,6 +322,10 @@ func readProducePayload(r io.Reader, req *Request) (*Request, error) {
 	if _, err := io.ReadFull(r, req.Value); err != nil {
 		return nil, err
 	}
+	msgID, err := readString16(r)
+	if err == nil {
+		req.MessageID = msgID
+	}
 	return req, nil
 }
 
@@ -240,6 +335,14 @@ func readConsumePayload(r io.Reader, req *Request) (*Request, error) {
 	}
 	if err := binary.Read(r, binary.BigEndian, &req.MaxBytes); err != nil {
 		return nil, err
+	}
+	var startTime int64
+	if err := binary.Read(r, binary.BigEndian, &startTime); err == nil {
+		req.StartTime = startTime
+	}
+	var endTime int64
+	if err := binary.Read(r, binary.BigEndian, &endTime); err == nil {
+		req.EndTime = endTime
 	}
 	return req, nil
 }
@@ -262,6 +365,23 @@ func readOffsetCommitPayload(r io.Reader, req *Request) (*Request, error) {
 	}
 	if err := binary.Read(r, binary.BigEndian, &req.Offset); err != nil {
 		return nil, err
+	}
+	sBuf := make([]byte, 1)
+	if _, err := io.ReadFull(r, sBuf); err == nil {
+		req.Success = sBuf[0] == 1
+	} else if err != io.EOF {
+		return nil, err
+	}
+	var numIDs uint32
+	if err := binary.Read(r, binary.BigEndian, &numIDs); err == nil {
+		req.ProcessedIDs = make([]string, numIDs)
+		for i := uint32(0); i < numIDs; i++ {
+			id, err := readString16(r)
+			if err != nil {
+				return nil, err
+			}
+			req.ProcessedIDs[i] = id
+		}
 	}
 	return req, nil
 }
@@ -321,6 +441,29 @@ func readSyncGroupPayload(r io.Reader, req *Request) (*Request, error) {
 	return req, nil
 }
 
+func readAuthenticatePayload(r io.Reader, req *Request) (*Request, error) {
+	u, err := readString16(r)
+	if err != nil {
+		return nil, err
+	}
+	req.Username = u
+	p, err := readString16(r)
+	if err != nil {
+		return nil, err
+	}
+	req.Password = p
+	return req, nil
+}
+
+func readRegisterSchemaPayload(r io.Reader, req *Request) (*Request, error) {
+	def, err := readString16(r)
+	if err != nil {
+		return nil, err
+	}
+	req.SchemaDef = def
+	return req, nil
+}
+
 func ReadRequest(r io.Reader) (*Request, error) {
 	var totalLen int32
 	if err := binary.Read(r, binary.BigEndian, &totalLen); err != nil {
@@ -344,24 +487,30 @@ func ReadRequest(r io.Reader) (*Request, error) {
 	}
 
 	req := &Request{Type: reqType, Topic: string(topicBuf)}
-	if reqType == ReqProduce {
+	switch reqType {
+	case ReqProduce:
 		return readProducePayload(r, req)
-	} else if reqType == ReqConsume {
+	case ReqConsume:
 		return readConsumePayload(r, req)
-	} else if reqType == ReqReplicate {
+	case ReqReplicate:
 		return readReplicatePayload(r, req)
-	} else if reqType == ReqJoinReplica {
+	case ReqJoinReplica:
 		return req, nil
-	} else if reqType == ReqOffsetCommit {
+	case ReqOffsetCommit:
 		return readOffsetCommitPayload(r, req)
-	} else if reqType == ReqOffsetFetch {
+	case ReqOffsetFetch:
 		return readOffsetFetchPayload(r, req)
-	} else if reqType == ReqJoinGroup {
+	case ReqJoinGroup:
 		return readJoinGroupPayload(r, req)
-	} else if reqType == ReqSyncGroup {
+	case ReqSyncGroup:
 		return readSyncGroupPayload(r, req)
+	case ReqAuthenticate:
+		return readAuthenticatePayload(r, req)
+	case ReqRegisterSchema:
+		return readRegisterSchemaPayload(r, req)
+	default:
+		return nil, errors.New("unknown request type")
 	}
-	return nil, errors.New("unknown request type")
 }
 
 func getResponsePayloadSize(resp *Response) int32 {
@@ -375,17 +524,23 @@ func getResponsePayloadSize(resp *Response) int32 {
 		}
 		return size
 	}
+	if resp.Token != "" {
+		return 1 + 2 + int32(len(resp.Token))
+	}
 	size := int32(1 + 8)
 	if resp.Records != nil {
 		size += 4
 		for _, rec := range resp.Records {
-			size += 8 + 4 + int32(len(rec.Key)) + 4 + int32(len(rec.Value))
+			size += 8 + 8 + 4 + int32(len(rec.Key)) + 4 + int32(len(rec.Value))
 		}
 	}
 	return size
 }
 
 func writeRecord(w io.Writer, rec *Record) error {
+	if err := binary.Write(w, binary.BigEndian, rec.Timestamp); err != nil {
+		return err
+	}
 	if err := binary.Write(w, binary.BigEndian, rec.Offset); err != nil {
 		return err
 	}
@@ -423,6 +578,14 @@ func writeAssignmentPayload(w io.Writer, assignment map[string][]int32) error {
 }
 
 func writeOkResponsePayload(w io.Writer, resp *Response) error {
+	if resp.Token != "" {
+		tBytes := []byte(resp.Token)
+		if err := binary.Write(w, binary.BigEndian, uint16(len(tBytes))); err != nil {
+			return err
+		}
+		_, err := w.Write(tBytes)
+		return err
+	}
 	if resp.Assignment != nil {
 		if err := binary.Write(w, binary.BigEndian, int32(resp.Generation)); err != nil {
 			return err
@@ -467,6 +630,9 @@ func WriteResponse(w io.Writer, resp *Response) error {
 
 func readRecord(r io.Reader) (*Record, error) {
 	var rec Record
+	if err := binary.Read(r, binary.BigEndian, &rec.Timestamp); err != nil {
+		return nil, err
+	}
 	if err := binary.Read(r, binary.BigEndian, &rec.Offset); err != nil {
 		return nil, err
 	}

@@ -12,29 +12,43 @@ import (
 )
 
 type RetentionManager struct {
-	server         *Server
-	retentionMs    int64
-	retentionBytes int64
+	server             *Server
+	retentionMs        int64
+	retentionBytes     int64
+	compactionInterval time.Duration
 }
 
-func NewRetentionManager(s *Server, ms, bytes int64) *RetentionManager {
+func NewRetentionManager(s *Server, ms, bytes int64, compInt time.Duration) *RetentionManager {
 	return &RetentionManager{
-		server:         s,
-		retentionMs:    ms,
-		retentionBytes: bytes,
+		server:             s,
+		retentionMs:        ms,
+		retentionBytes:     bytes,
+		compactionInterval: compInt,
 	}
 }
 
 func (rm *RetentionManager) Start(shutdown chan struct{}) {
-	ticker := time.NewTicker(1 * time.Minute)
+	retentionTicker := time.NewTicker(1 * time.Minute)
 	go func() {
 		for {
 			select {
-			case <-ticker.C:
+			case <-retentionTicker.C:
 				rm.processRetention()
+			case <-shutdown:
+				retentionTicker.Stop()
+				return
+			}
+		}
+	}()
+
+	compactionTicker := time.NewTicker(rm.compactionInterval)
+	go func() {
+		for {
+			select {
+			case <-compactionTicker.C:
 				rm.processCompaction(1000)
 			case <-shutdown:
-				ticker.Stop()
+				compactionTicker.Stop()
 				return
 			}
 		}
@@ -134,14 +148,14 @@ func (s *Server) writeCompactedFile(topic string, records []storage.Record, last
 	tempPath := filepath.Join(s.dataDir, fmt.Sprintf("%s.compacted.log", topic))
 	os.Remove(tempPath)
 	os.Remove(tempPath + ".index")
-	tempSeg, err := storage.NewSegment(tempPath)
+	tempSeg, err := storage.NewSegment(tempPath, s.flushInt, s.batchSize)
 	if err != nil {
 		return err
 	}
 	defer tempSeg.Close()
 	for _, rec := range records {
 		if len(rec.Key) == 0 || rec.Offset == lastOffsets[string(rec.Key)] {
-			if _, err := tempSeg.Append(rec.Key, rec.Value); err != nil {
+			if _, err := tempSeg.AppendBatch(rec.Key, rec.Value); err != nil {
 				return err
 			}
 		}
@@ -159,7 +173,7 @@ func (s *Server) replaceWithCompacted(topic string) error {
 	os.Rename(tempPath, logPath)
 	os.Rename(tempPath+".index", idxPath)
 
-	newSeg, err := storage.NewSegment(logPath)
+	newSeg, err := storage.NewSegment(logPath, s.flushInt, s.batchSize)
 	if err != nil {
 		return err
 	}

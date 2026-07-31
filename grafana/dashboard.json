@@ -3,10 +3,7 @@
     "list": [
       {
         "builtIn": 1,
-        "datasource": {
-          "type": "datasource",
-          "uid": "grafana"
-        },
+        "datasource": { "type": "datasource", "uid": "grafana" },
         "enable": true,
         "hide": true,
         "name": "Annotations & Alerts",
@@ -23,75 +20,66 @@
   "panels": [
     {
       "collapsed": false,
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 0
-      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "id": 1,
-      "title": "Messages Produced per Second",
+      "title": "Message Rate",
       "type": "timeseries",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
           "expr": "rate(kafkalite_messages_produced_total[1m])",
-          "legendFormat": "{{instance}}",
-          "range": true,
+          "legendFormat": "Produce",
           "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "rate(kafkalite_messages_consumed_total[1m])",
+          "legendFormat": "Consume",
+          "refId": "B"
         }
       ]
     },
     {
       "collapsed": false,
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 0
-      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "id": 2,
-      "title": "Produce Latency (p99)",
+      "title": "Consumer Lag",
       "type": "timeseries",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "kafkalite_produce_latency_seconds{quantile=\"0.99\"}",
-          "legendFormat": "{{instance}}",
-          "range": true,
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "kafkalite_consumer_lag",
+          "legendFormat": "Lag",
           "refId": "A"
         }
       ]
     },
     {
       "collapsed": false,
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 8
-      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "id": 3,
-      "title": "Partition Log Size",
+      "title": "Partition Distribution",
+      "type": "bargauge",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "kafkalite_partition_size_bytes",
+          "legendFormat": "{{topic}} (Partition {{partition}})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 4,
+      "title": "AI Insights CPU Load Simulation",
       "type": "gauge",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "kafkalite_partition_size_bytes",
-          "legendFormat": "{{topic}} (Partition {{partition}})",
-          "range": true,
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "kafkalite_ai_simulated_cpu_load",
+          "legendFormat": "CPU Load (%)",
           "refId": "A"
         }
       ]
@@ -100,17 +88,12 @@
   "schemaVersion": 36,
   "style": "dark",
   "tags": [],
-  "templating": {
-    "list": []
-  },
-  "time": {
-    "from": "now-15m",
-    "to": "now"
-  },
+  "templating": { "list": [] },
+  "time": { "from": "now-15m", "to": "now" },
   "timepicker": {},
   "timezone": "",
-  "title": "KafkaLite Cluster Health & Metrics",
-  "uid": "kafkalite_metrics",
+  "title": "KafkaLite Metrics (AI Insights Edition)",
+  "uid": "kafkalite_metrics_enterprise",
   "version": 1,
   "weekStart": ""
 }

@@ -2,17 +2,20 @@
 package storage
 
 import (
+	"bytes"
 	"encoding/binary"
 	"io"
 	"os"
 	"sync"
+	"time"
 )
 
 // Record represents a single key-value message persisted in a segment file with a logical offset.
 type Record struct {
-	Offset int64
-	Key    []byte
-	Value  []byte
+	Timestamp int64
+	Offset    int64
+	Key       []byte
+	Value     []byte
 }
 
 // Segment manages a single partition's append-only log file and its corresponding sparse offset index.
@@ -24,6 +27,13 @@ type Segment struct {
 	index           *SparseIndex
 	nextOffset      int64
 	lastIndexedSize int64
+
+	batchBuffer      *bytes.Buffer
+	batchMutex       sync.Mutex
+	flushTicker      *time.Ticker
+	batchSize        int
+	flushDone        chan struct{}
+	batchStartOffset int64
 }
 
 func getIndexPath(logPath string) string {
@@ -34,7 +44,7 @@ func getIndexPath(logPath string) string {
 }
 
 // NewSegment instantiates a new Segment managing the raw log file and its index at the specified path.
-func NewSegment(path string) (*Segment, error) {
+func NewSegment(path string, flushInt time.Duration, batchSize int) (*Segment, error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
 	if err != nil {
 		return nil, err
@@ -50,15 +60,20 @@ func NewSegment(path string) (*Segment, error) {
 		return nil, err
 	}
 	s := &Segment{
-		file: file,
-		path: path,
-		size: info.Size(),
-		index: idx,
+		file:            file,
+		path:            path,
+		size:            info.Size(),
+		index:           idx,
+		batchBuffer:     new(bytes.Buffer),
+		batchSize:       batchSize,
+		flushTicker:     time.NewTicker(flushInt),
+		flushDone:       make(chan struct{}),
 	}
 	if err := s.recoverNextOffset(); err != nil {
 		s.Close()
 		return nil, err
 	}
+	go s.flushLoop()
 	return s, nil
 }
 
@@ -79,7 +94,7 @@ func (s *Segment) recoverNextOffset() error {
 	}
 
 	for currPos < s.size {
-		_, _, next, err := s.readAtNoLock(currPos)
+		_, _, _, next, err := s.readAtNoLock(currPos)
 		if err != nil {
 			break
 		}
@@ -93,6 +108,9 @@ func (s *Segment) recoverNextOffset() error {
 
 // Close safely closes the sparse index and commits any remaining writes to the log file descriptor.
 func (s *Segment) Close() error {
+	s.flushTicker.Stop()
+	close(s.flushDone)
+	s.flush()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.index.Close()
@@ -106,61 +124,111 @@ func (s *Segment) Size() int64 {
 	return s.size
 }
 
-// Append writes a new key-value pair to the log segment, flushes to disk (fsync), and commits index checkpoints.
-func (s *Segment) Append(key, value []byte) (int64, error) {
+func (s *Segment) flushLoop() {
+	for {
+		select {
+		case <-s.flushTicker.C:
+			s.flush()
+		case <-s.flushDone:
+			return
+		}
+	}
+}
+
+func (s *Segment) flush() error {
+	s.batchMutex.Lock()
+	defer s.batchMutex.Unlock()
+
+	if s.batchBuffer.Len() == 0 {
+		return nil
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	logicalOffset := s.nextOffset
-	physicalPos := s.size
-	kLen := int32(len(key))
-	vLen := int32(len(value))
-
-	buf := make([]byte, 8+len(key)+len(value))
-	binary.BigEndian.PutUint32(buf[0:4], uint32(kLen))
-	copy(buf[4:4+len(key)], key)
-	binary.BigEndian.PutUint32(buf[4+len(key):8+len(key)], uint32(vLen))
-	copy(buf[8+len(key):], value)
-
+	buf := s.batchBuffer.Bytes()
 	n, err := s.file.Write(buf)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	if err := s.file.Sync(); err != nil {
-		return 0, err
+		return err
 	}
-	s.size += int64(n)
-	s.nextOffset++
 
+	physicalPos := s.size
+	s.size += int64(n)
+
+	// Since we batched multiple records, add one index entry for the first record in the batch.
 	if physicalPos == 0 || s.size-s.lastIndexedSize >= 4096 {
-		if err := s.index.AddEntry(logicalOffset, physicalPos); err != nil {
-			return 0, err
+		if err := s.index.AddEntry(s.batchStartOffset, physicalPos); err != nil {
+			return err
 		}
 		s.lastIndexedSize = s.size
+	}
+	
+	s.batchBuffer.Reset()
+	return nil
+}
+
+// AppendBatch writes a new key-value pair to the log segment buffer and triggers a flush if needed.
+func (s *Segment) AppendBatch(key, value []byte) (int64, error) {
+	s.batchMutex.Lock()
+
+	s.mu.Lock()
+	if s.batchBuffer.Len() == 0 {
+		s.batchStartOffset = s.nextOffset
+	}
+	logicalOffset := s.nextOffset
+	s.nextOffset++
+	s.mu.Unlock()
+
+	kLen := int32(len(key))
+	vLen := int32(len(value))
+	timestamp := time.Now().UnixMilli()
+
+	buf := make([]byte, 8+4+len(key)+4+len(value))
+	binary.BigEndian.PutUint64(buf[0:8], uint64(timestamp))
+	binary.BigEndian.PutUint32(buf[8:12], uint32(kLen))
+	copy(buf[12:12+len(key)], key)
+	binary.BigEndian.PutUint32(buf[12+len(key):16+len(key)], uint32(vLen))
+	copy(buf[16+len(key):], value)
+
+	s.batchBuffer.Write(buf)
+	shouldFlush := s.batchBuffer.Len() >= s.batchSize
+	s.batchMutex.Unlock()
+
+	if shouldFlush {
+		s.flush()
 	}
 	return logicalOffset, nil
 }
 
-func (s *Segment) readAtNoLock(offset int64) ([]byte, []byte, int64, error) {
+func (s *Segment) readAtNoLock(offset int64) (int64, []byte, []byte, int64, error) {
+	tsBuf := make([]byte, 8)
+	if _, err := s.file.ReadAt(tsBuf, offset); err != nil {
+		return 0, nil, nil, 0, err
+	}
+	timestamp := int64(binary.BigEndian.Uint64(tsBuf))
+
 	keyLenBuf := make([]byte, 4)
-	if _, err := s.file.ReadAt(keyLenBuf, offset); err != nil {
-		return nil, nil, 0, err
+	if _, err := s.file.ReadAt(keyLenBuf, offset+8); err != nil {
+		return 0, nil, nil, 0, err
 	}
 	kLen := binary.BigEndian.Uint32(keyLenBuf)
 	key := make([]byte, kLen)
-	if _, err := s.file.ReadAt(key, offset+4); err != nil {
-		return nil, nil, 0, err
+	if _, err := s.file.ReadAt(key, offset+12); err != nil {
+		return 0, nil, nil, 0, err
 	}
 	valLenBuf := make([]byte, 4)
-	if _, err := s.file.ReadAt(valLenBuf, offset+4+int64(kLen)); err != nil {
-		return nil, nil, 0, err
+	if _, err := s.file.ReadAt(valLenBuf, offset+12+int64(kLen)); err != nil {
+		return 0, nil, nil, 0, err
 	}
 	vLen := binary.BigEndian.Uint32(valLenBuf)
 	value := make([]byte, vLen)
-	if _, err := s.file.ReadAt(value, offset+4+int64(kLen)+4); err != nil {
-		return nil, nil, 0, err
+	if _, err := s.file.ReadAt(value, offset+12+int64(kLen)+4); err != nil {
+		return 0, nil, nil, 0, err
 	}
-	return key, value, offset + 4 + int64(kLen) + 4 + int64(vLen), nil
+	return timestamp, key, value, offset + 12 + int64(kLen) + 4 + int64(vLen), nil
 }
 
 func (s *Segment) seekPhysicalPos(targetLogical int64) (int64, int64, error) {
@@ -171,7 +239,7 @@ func (s *Segment) seekPhysicalPos(targetLogical int64) (int64, int64, error) {
 		if currPos >= s.size {
 			return currPos, currLogical, nil
 		}
-		_, _, next, err := s.readAtNoLock(currPos)
+		_, _, _, next, err := s.readAtNoLock(currPos)
 		if err != nil {
 			return currPos, currLogical, err
 		}
@@ -193,7 +261,8 @@ func (s *Segment) ReadAt(logicalOffset int64) ([]byte, []byte, int64, error) {
 	if currPos >= s.size {
 		return nil, nil, 0, io.EOF
 	}
-	key, val, _, err := s.readAtNoLock(currPos)
+	ts, key, val, _, err := s.readAtNoLock(currPos)
+	_ = ts
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -216,11 +285,11 @@ func (s *Segment) ReadRecords(startLogical int64, maxBytes int) ([]Record, int64
 		if currPos >= s.size || (maxBytes > 0 && bytesRead >= maxBytes) {
 			break
 		}
-		key, val, next, err := s.readAtNoLock(currPos)
+		ts, key, val, next, err := s.readAtNoLock(currPos)
 		if err != nil {
 			break
 		}
-		records = append(records, Record{Offset: currLogical, Key: key, Value: val})
+		records = append(records, Record{Timestamp: ts, Offset: currLogical, Key: key, Value: val})
 		bytesRead += int(next - currPos)
 		currLogical++
 		currPos = next

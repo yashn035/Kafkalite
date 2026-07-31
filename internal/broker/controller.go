@@ -18,8 +18,8 @@ type Controller struct {
 	dataDir     string
 	metadataDir string
 	leadersPath string
-	lockPath    string
 	leaders     map[string]int
+	activeNodes map[int]time.Time
 	shutdown    chan struct{}
 	wg          sync.WaitGroup
 }
@@ -37,8 +37,8 @@ func NewController(brokerID int, dataDir string) *Controller {
 		dataDir:     dataDir,
 		metadataDir: metaDir,
 		leadersPath: filepath.Join(metaDir, "leaders.json"),
-		lockPath:    filepath.Join(metaDir, "leaders.json.lock"),
 		leaders:     make(map[string]int),
+		activeNodes: make(map[int]time.Time),
 		shutdown:    make(chan struct{}),
 	}
 }
@@ -48,7 +48,11 @@ func (c *Controller) Start() {
 	c.mu.Lock()
 	c.loadLeaders()
 	c.mu.Unlock()
-	c.wg.Add(1)
+	c.wg.Add(2)
+	go func() {
+		defer c.wg.Done()
+		c.heartbeatServer()
+	}()
 	go func() {
 		defer c.wg.Done()
 		c.runLoop()
@@ -72,14 +76,60 @@ func (c *Controller) Stop() {
 }
 
 func (c *Controller) runLoop() {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(2 * time.Second)
+	failoverTicker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
+	defer failoverTicker.Stop()
+
 	for {
 		select {
 		case <-ticker.C:
+			c.sendHeartbeats()
+		case <-failoverTicker.C:
 			c.checkFailover()
 		case <-c.shutdown:
 			return
+		}
+	}
+}
+
+func (c *Controller) sendHeartbeats() {
+	msg := fmt.Appendf(nil, "%d", c.brokerID)
+	// Hardcoded 3 brokers for demo
+	for i := 0; i < 3; i++ {
+		addr := fmt.Sprintf("localhost:%d", 9095+i)
+		conn, err := net.Dial("udp", addr)
+		if err == nil {
+			conn.Write(msg)
+			conn.Close()
+		}
+	}
+}
+
+func (c *Controller) heartbeatServer() {
+	addr := fmt.Sprintf("0.0.0.0:%d", 9095+c.brokerID)
+	conn, err := net.ListenPacket("udp", addr)
+	if err != nil {
+		slog.Error("Failed to start heartbeat server", "err", err)
+		return
+	}
+	defer conn.Close()
+
+	buf := make([]byte, 1024)
+	for {
+		select {
+		case <-c.shutdown:
+			return
+		default:
+		}
+		conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+		n, _, err := conn.ReadFrom(buf)
+		if err == nil {
+			var id int
+			fmt.Sscanf(string(buf[:n]), "%d", &id)
+			c.mu.Lock()
+			c.activeNodes[id] = time.Now()
+			c.mu.Unlock()
 		}
 	}
 }
@@ -106,59 +156,59 @@ func (c *Controller) saveLeaders() {
 	file.Sync()
 }
 
-func isAlive(addr string) bool {
-	conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
-	if err != nil {
-		return false
-	}
-	conn.Close()
-	return true
-}
-
 func (c *Controller) checkFailover() {
 	c.mu.RLock()
 	leadersCopy := make(map[string]int)
 	for k, v := range c.leaders {
 		leadersCopy[k] = v
 	}
+	activeCopy := make(map[int]time.Time)
+	for k, v := range c.activeNodes {
+		activeCopy[k] = v
+	}
 	c.mu.RUnlock()
+
+	// Ensure self is active
+	activeCopy[c.brokerID] = time.Now()
 
 	for partitionKey, leaderID := range leadersCopy {
 		if leaderID == c.brokerID {
 			continue
 		}
-		addr := fmt.Sprintf("broker-%d:9092", leaderID)
-		if isAlive(addr) {
-			continue
+		
+		lastSeen, ok := activeCopy[leaderID]
+		// If leader hasn't sent a heartbeat in 10 seconds, it's dead
+		if !ok || time.Since(lastSeen) > 10*time.Second {
+			c.executeFailover(partitionKey, activeCopy)
 		}
-		c.executeFailover(partitionKey)
 	}
 }
 
-func (c *Controller) executeFailover(partitionKey string) {
-	for {
-		select {
-		case <-c.shutdown:
-			return
-		default:
+func (c *Controller) executeFailover(partitionKey string, active map[int]time.Time) {
+	// Find lowest active ID
+	lowestID := c.brokerID
+	for id, lastSeen := range active {
+		if time.Since(lastSeen) <= 10*time.Second && id < lowestID {
+			lowestID = id
 		}
-		lockFile, err := os.OpenFile(c.lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0666)
-		if err == nil {
-			lockFile.Close()
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
 	}
-	defer os.Remove(c.lockPath)
+
+	// Only the node with the lowest ID gets to claim leadership to prevent split-brain
+	if lowestID != c.brokerID {
+		return
+	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.loadLeaders()
+	
+	// Double check if it changed
 	curr := c.leaders[partitionKey]
-	if !isAlive(fmt.Sprintf("broker-%d:9092", curr)) {
+	lastSeen, ok := active[curr]
+	if !ok || time.Since(lastSeen) > 10*time.Second {
 		c.leaders[partitionKey] = c.brokerID
 		c.saveLeaders()
-		slog.Warn("Failover triggered", "partition", partitionKey, "new_leader", c.brokerID)
+		slog.Warn("Lease Failover triggered", "partition", partitionKey, "new_leader", c.brokerID)
 	}
 }
 
@@ -188,4 +238,19 @@ func (c *Controller) GetLedPartitions(brokerID int) []string {
 		return []string{}
 	}
 	return list
+}
+
+// MovePartition explicitly reassigns a partition's leadership to a new broker.
+func (c *Controller) MovePartition(partitionKey string, newLeaderID int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.loadLeaders()
+	
+	if current, exists := c.leaders[partitionKey]; exists && current == newLeaderID {
+		return // already the leader
+	}
+
+	c.leaders[partitionKey] = newLeaderID
+	c.saveLeaders()
+	slog.Info("Partition moved via rebalancer", "partition", partitionKey, "new_leader", newLeaderID)
 }

@@ -64,5 +64,24 @@ services:
       timeout: 5s
       retries: 3
 
+  api-gateway:
+    build: .
+    entrypoint: ["./api-gateway"]
+    ports:
+      - "8086:8082"
+    depends_on:
+      broker-0:
+        condition: service_healthy
+
+  web:
+    image: nginx:alpine
+    ports:
+      - "3001:80"
+    volumes:
+      - ./web/frontend:/usr/share/nginx/html:ro
+      - ./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api-gateway
+
 volumes:
   kafkalite-data:

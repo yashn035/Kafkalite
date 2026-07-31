@@ -32,7 +32,7 @@ func TestGroupCoordinatorRebalance(t *testing.T) {
 		t.Errorf("expected consumer-1 to get partition 0, got %v", parts1)
 	}
 
-	ass2 = gc.SyncGroup(groupID, "consumer-2")
+	ass2 := gc.SyncGroup(groupID, "consumer-2")
 	parts2 := ass2["test-topic"]
 	if len(parts2) != 1 || parts2[0] != 1 {
 		t.Errorf("expected consumer-2 to get partition 1, got %v", parts2)

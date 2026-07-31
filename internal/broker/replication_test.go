@@ -16,13 +16,13 @@ func TestReplicationLeaderFollower(t *testing.T) {
 		t.Fatalf("failed temp dir: %v", err)
 	}
 	defer os.RemoveAll(tmpDir)
-	leader, err := NewServer(0, tmpDir+"/leader")
+	leader, err := NewServer(0, tmpDir+"/leader", -1, 100*time.Millisecond, 65536, 30*time.Second, 10000)
 	if err != nil {
 		t.Fatalf("leader create fail: %v", err)
 	}
 	defer leader.Close()
 
-	follower, err := NewServer(1, tmpDir+"/follower")
+	follower, err := NewServer(1, tmpDir+"/follower", -1, 100*time.Millisecond, 65536, 30*time.Second, 10000)
 	if err != nil {
 		t.Fatalf("follower create fail: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestReplicationLeaderFollower(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	go follower.RunFollowerLoop(leaderAddr, "follower-node")
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
 	clientConn, err := net.Dial("tcp", leaderAddr)
 	if err != nil {
@@ -75,6 +75,8 @@ func TestReplicationLeaderFollower(t *testing.T) {
 		t.Fatalf("connect follower fail: %v", err)
 	}
 	defer followerConn.Close()
+
+	time.Sleep(200 * time.Millisecond)
 
 	consReq := &protocol.Request{
 		Type:     protocol.ReqConsume,

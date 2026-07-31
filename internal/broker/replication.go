@@ -149,7 +149,7 @@ func (s *Server) handleFollowerHandshakeAndLoop(conn net.Conn, nodeID string) er
 		if err != nil {
 			resp = protocol.Response{Status: protocol.StatusErr, ErrMsg: err.Error()}
 		} else {
-			_, err = seg.Append(req.Key, req.Value)
+			_, err = seg.AppendBatch(req.Key, req.Value)
 			if err != nil {
 				resp = protocol.Response{Status: protocol.StatusErr, ErrMsg: err.Error()}
 			} else {

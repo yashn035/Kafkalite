@@ -17,7 +17,7 @@ func TestServerProduceAndConsume(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	srv, err := NewServer(0, tmpDir)
+	srv, err := NewServer(0, tmpDir, 1, 50*time.Millisecond, 1024, 30*time.Second, 10000)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}
@@ -70,6 +70,8 @@ func TestServerProduceAndConsume(t *testing.T) {
 	if producedOffset != 0 {
 		t.Errorf("expected offset 0, got %d", producedOffset)
 	}
+
+	time.Sleep(200 * time.Millisecond)
 
 	consReq := &protocol.Request{
 		Type:     protocol.ReqConsume,

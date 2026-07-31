@@ -46,5 +46,8 @@ jobs:
           dist/broker-darwin-arm64
           dist/client-darwin-arm64
           dist/checksums.txt
+          BENCHMARKS.md
+          GETTING_STARTED.md
+          CONTRIBUTING.md
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

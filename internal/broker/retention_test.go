@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"testing"
+	"time"
 )
 
 func TestLogRetentionAndCompaction(t *testing.T) {
@@ -12,7 +13,7 @@ func TestLogRetentionAndCompaction(t *testing.T) {
 		t.Fatalf("failed temp dir: %v", err)
 	}
 	defer os.RemoveAll(tmpDir)
-	s, err := NewServer(0, tmpDir)
+	s, err := NewServer(0, tmpDir, -1, 100*time.Millisecond, 1024, 30*time.Second, 10000)
 	if err != nil {
 		t.Fatalf("failed create server: %v", err)
 	}
@@ -23,9 +24,10 @@ func TestLogRetentionAndCompaction(t *testing.T) {
 		t.Fatalf("failed get segment: %v", err)
 	}
 
-	seg.Append([]byte("k1"), []byte("v1"))
-	seg.Append([]byte("k2"), []byte("v2"))
-	seg.Append([]byte("k1"), []byte("v3"))
+	seg.AppendBatch([]byte("k1"), []byte("v1"))
+	seg.AppendBatch([]byte("k2"), []byte("v2"))
+	seg.AppendBatch([]byte("k1"), []byte("v3"))
+	time.Sleep(200 * time.Millisecond)
 
 	records, _, err := seg.ReadRecords(0, 0)
 	if err != nil || len(records) != 3 {
@@ -54,7 +56,7 @@ func TestLogRetentionAndCompaction(t *testing.T) {
 		t.Errorf("records mismatch after compaction")
 	}
 
-	rm := NewRetentionManager(s, 0, 10)
+	rm := NewRetentionManager(s, 0, 10, 5*time.Minute)
 	rm.processRetention()
 
 	s.mu.Lock()

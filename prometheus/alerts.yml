@@ -1,0 +1,30 @@
+groups:
+- name: kafkalite_alerts
+  rules:
+  - alert: HighCPULoad
+    expr: kafkalite_ai_simulated_cpu_load > 90
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: High CPU load on KafkaLite broker
+      description: "CPU load is above 90% (current value: {{ $value }}%)"
+
+  - alert: HighConsumerLag
+    expr: kafkalite_consumer_lag > 10000
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: High consumer lag detected
+      description: "Consumer lag is above 10k messages (current value: {{ $value }})"
+
+  - alert: DiskFull
+    # Placeholder expression since node_exporter would typically provide this.
+    expr: (node_filesystem_size_bytes - node_filesystem_free_bytes) / node_filesystem_size_bytes * 100 > 85
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: Disk is almost full
+      description: "Disk usage is above 85% (current value: {{ $value }}%)"

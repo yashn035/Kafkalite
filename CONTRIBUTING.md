@@ -1,43 +1,33 @@
 # Contributing to KafkaLite
 
-Thank you for your interest in contributing to **KafkaLite**! We welcome bug fixes, documentation patches, and cleanups.
+Welcome to the KafkaLite project! We'd love your help to make it even better.
 
----
+## 🛠️ Development Setup
 
-## 🛠️ Dev Environment Setup
-
-1. **Prerequisites**: Install [Go 1.21+](https://go.dev/doc/install) and [Docker](https://docs.docker.com/get-docker/).
-2. **Clone Repository**:
+1. **Prerequisites**: Go 1.21+, Docker, Make.
+2. **Clone the repo**: `git clone https://github.com/yashn035/Kafkalite.git`
+3. **Build the project**: 
    ```bash
-   git clone https://github.com/yashn035/Kafkalite.git
-   cd Kafkalite
+   make build
+   ```
+4. **Run tests**:
+   ```bash
+   make test
    ```
 
----
+## 📝 Coding Standards
 
-## 🧪 Running Tests & Checks
+To ensure a highly readable and maintainable codebase, we strictly enforce the following rules:
+- **Gofmt**: All code must be formatted with `gofmt`. Run `make lint` before submitting a PR.
+- **Function Length**: Keep all functions under **30 lines**. If a function grows larger, break it down into smaller, composable helper functions.
+- **Concurrency**: Always use `sync.RWMutex` for shared memory and thoroughly test for data races.
 
-Before submitting any code changes, ensure all tests compile and pass:
+## 🔄 Pull Request Workflow
 
-```bash
-# Run Go unit test suite with race checker
-make test
+1. Fork the repository.
+2. Create a new feature branch (`git checkout -b feature/my-feature`).
+3. Commit your changes. Ensure tests pass (`make test`).
+4. Push to your branch and open a Pull Request against `main`.
+5. A maintainer will review your code. CI will automatically run tests and generate a coverage report.
 
-# Run Go static analysis code linter
-make lint
-
-# Run local Docker integration failover demo
-make demo
-```
-
----
-
-## 📝 Pull Request Guidelines
-
-1. **Keep Changes Focused**: Separate unrelated changes into different branches and PRs.
-2. **Follow Coding Conventions**:
-   * Keep functions under **30 lines** of code where possible.
-   * Write thread-safe abstractions using `sync.RWMutex`.
-   * Ensure Go code is formatted using `go fmt ./...`.
-3. **No Generics**: To keep the binary small and compilation speeds high, avoid using Go generics.
-4. **Document Exports**: Add GoDoc comments to any new exported functions or structures.
+Thank you for contributing!

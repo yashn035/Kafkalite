@@ -4,11 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"log/slog"
 	"net"
 	"os"
 	"sort"
-	"strconv"
 	"time"
 
 	"kafkalite/internal/protocol"
@@ -40,14 +38,20 @@ func runProduceClient(bAddr, t string, args []string) {
 	}
 	defer conn.Close()
 
+	part := *partition
+	if part == -1 {
+		part = 0
+	}
+	targetTopic := fmt.Sprintf("%s-%d", t, part)
+
 	if *messages > 1 || len(args) < 2 {
 		for i := 0; i < *messages; i++ {
 			k := fmt.Sprintf("key-%d", i)
 			v := fmt.Sprintf("val-%d", i)
-			sendProduce(conn, t, k, v)
+			sendProduce(conn, targetTopic, k, v)
 		}
 	} else {
-		sendProduce(conn, t, args[0], args[1])
+		sendProduce(conn, targetTopic, args[0], args[1])
 	}
 }
 
@@ -73,7 +77,7 @@ func sendProduce(conn net.Conn, t, k, v string) {
 	}
 }
 
-func runConsumeClient(bAddr, t string, args []string) {
+func runConsumeClient(bAddr, t string) {
 	mID := *consumerID
 	if mID == "" {
 		hostname, _ := os.Hostname()
@@ -357,9 +361,13 @@ func main() {
 	m := *mode
 
 	args := flag.Args()
+	var payloadArgs []string
 	if m == "" && len(args) >= 2 {
 		m = args[0]
 		t = args[1]
+		payloadArgs = args[2:]
+	} else {
+		payloadArgs = args
 	}
 
 	if *benchmark != "" {
@@ -380,8 +388,8 @@ func main() {
 	}
 
 	if m == "produce" {
-		runProduceClient(bAddr, t, args[2:])
+		runProduceClient(bAddr, t, payloadArgs)
 	} else {
-		runConsumeClient(bAddr, t, args[2:])
+		runConsumeClient(bAddr, t)
 	}
 }

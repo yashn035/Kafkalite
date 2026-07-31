@@ -12,11 +12,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/viper"
 
 	"kafkalite/internal/broker"
+	"kafkalite/internal/monitoring"
 )
 
 func loadConfig() {
@@ -110,6 +112,12 @@ func main() {
 	leader := flag.String("leader", "", "Leader address to sync from")
 	brokerID := flag.Int("id", 0, "Broker ID")
 	logFormat := flag.String("log-format", "text", "Log format: text or json")
+	acks := flag.Int("acks", -1, "Acks: 0 (fire-and-forget), 1 (leader only), -1 (all replicas)")
+	flushInterval := flag.Duration("flush-interval", 100*time.Millisecond, "Group commit flush interval")
+	batchSize := flag.Int("batch-size", 65536, "Group commit batch size in bytes")
+	compactionInterval := flag.Duration("compaction-interval", 5*time.Minute, "Interval for running background compaction")
+	rebalanceInterval := flag.Duration("rebalance-interval", 30*time.Second, "Interval for partition rebalancing")
+	rebalanceThreshold := flag.Int64("rebalance-threshold", 10000, "Threshold of messages before rebalancing")
 	flag.Parse()
 
 	initLogger(*logFormat)
@@ -119,7 +127,9 @@ func main() {
 	dataDir := viper.GetString("data.dir")
 	listenAddr := viper.GetString("listen.address")
 
-	srv, err := broker.NewServer(*brokerID, dataDir)
+	go monitoring.StartWebSocketServer()
+
+	srv, err := broker.NewServer(*brokerID, dataDir, *acks, *flushInterval, *batchSize, *rebalanceInterval, *rebalanceThreshold)
 	if err != nil {
 		slog.Error("Failed to initialize server", "err", err)
 		os.Exit(1)
@@ -129,7 +139,7 @@ func main() {
 	setupShutdown(srv, retentionShutdown)
 	startAdminServer(srv, retentionShutdown)
 
-	rm := broker.NewRetentionManager(srv, viper.GetInt64("retention.ms"), viper.GetInt64("retention.bytes"))
+	rm := broker.NewRetentionManager(srv, viper.GetInt64("retention.ms"), viper.GetInt64("retention.bytes"), *compactionInterval)
 	rm.Start(retentionShutdown)
 
 	if *leader != "" {

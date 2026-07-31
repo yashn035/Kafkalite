@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KafkaLite Dashboard</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Custom Dark Theme -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-dark text-light">
+
+    <!-- Auth Modal -->
+    <div class="modal fade" id="authModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content bg-secondary text-light">
+                <div class="modal-header border-dark">
+                    <h5 class="modal-title"><i class="bi bi-shield-lock"></i> Authentication Required</h5>
+                </div>
+                <div class="modal-body">
+                    <p>Please enter your JWT token to connect to KafkaLite.</p>
+                    <input type="text" id="jwtToken" class="form-control bg-dark text-light border-dark" placeholder="eyJhbGciOi...">
+                </div>
+                <div class="modal-footer border-dark">
+                    <button type="button" class="btn btn-primary" id="saveTokenBtn">Connect</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex" id="wrapper">
+        <!-- Sidebar -->
+        <div class="bg-dark border-end border-secondary" id="sidebar-wrapper">
+            <div class="sidebar-heading fs-4 fw-bold p-3 text-primary">
+                <i class="bi bi-hdd-network"></i> KafkaLite
+            </div>
+            <div class="list-group list-group-flush rounded-0 mt-3">
+                <a href="#" class="list-group-item list-group-item-action bg-dark text-light border-0 active nav-link" data-target="dashboard"><i class="bi bi-speedometer2 me-2"></i> Dashboard</a>
+                <a href="#" class="list-group-item list-group-item-action bg-dark text-light border-0 nav-link" data-target="topics"><i class="bi bi-collection me-2"></i> Topics</a>
+                <a href="#" class="list-group-item list-group-item-action bg-dark text-light border-0 nav-link" data-target="produce"><i class="bi bi-send me-2"></i> Produce</a>
+                <a href="#" class="list-group-item list-group-item-action bg-dark text-light border-0 nav-link" data-target="consume"><i class="bi bi-envelope-open me-2"></i> Consume</a>
+                <a href="#" class="list-group-item list-group-item-action bg-dark text-light border-0 nav-link" data-target="groups"><i class="bi bi-people me-2"></i> Consumer Groups</a>
+                <a href="#" class="list-group-item list-group-item-action bg-dark text-light border-0 nav-link" data-target="schema"><i class="bi bi-file-earmark-code me-2"></i> Schema Registry</a>
+                <a href="#" class="list-group-item list-group-item-action bg-dark text-light border-0 nav-link" data-target="insights"><i class="bi bi-cpu me-2"></i> AI Insights</a>
+            </div>
+        </div>
+
+        <!-- Page Content -->
+        <div id="page-content-wrapper" class="w-100 p-4">
+            <!-- Connection Status -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 id="pageTitle" class="fw-bold">Dashboard</h2>
+                <div>
+                    <span id="wsStatus" class="badge bg-danger"><i class="bi bi-circle-fill me-1"></i> Disconnected</span>
+                    <button class="btn btn-sm btn-outline-secondary ms-2" id="logoutBtn"><i class="bi bi-box-arrow-right"></i> Logout</button>
+                </div>
+            </div>
+
+            <!-- DASHBOARD SECTION -->
+            <div id="dashboard" class="page-section">
+                <div class="row g-4 mb-4">
+                    <div class="col-md-3">
+                        <div class="card stat-card bg-secondary text-light border-0">
+                            <div class="card-body">
+                                <h6 class="text-muted text-uppercase mb-2">Produce Rate</h6>
+                                <h2 class="mb-0"><span id="metricProduceRate">0</span> <small class="fs-6 text-muted">msg/s</small></h2>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stat-card bg-secondary text-light border-0">
+                            <div class="card-body">
+                                <h6 class="text-muted text-uppercase mb-2">Consume Rate</h6>
+                                <h2 class="mb-0"><span id="metricConsumeRate">0</span> <small class="fs-6 text-muted">msg/s</small></h2>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stat-card bg-secondary text-light border-0">
+                            <div class="card-body">
+                                <h6 class="text-muted text-uppercase mb-2">Total Produced</h6>
+                                <h2 class="mb-0" id="metricTotalProduced">0</h2>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card stat-card bg-secondary text-light border-0">
+                            <div class="card-body">
+                                <h6 class="text-muted text-uppercase mb-2">Total Consumed</h6>
+                                <h2 class="mb-0" id="metricTotalConsumed">0</h2>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card bg-secondary text-light border-0">
+                    <div class="card-body">
+                        <h5 class="card-title mb-4">Throughput (Live)</h5>
+                        <canvas id="throughputChart" height="100"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TOPICS SECTION -->
+            <div id="topics" class="page-section d-none">
+                <div class="d-flex justify-content-between mb-3">
+                    <h4>Available Topics</h4>
+                    <button class="btn btn-primary btn-sm" id="refreshTopicsBtn"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+                </div>
+                <div class="card bg-secondary text-light border-0">
+                    <div class="card-body">
+                        <ul class="list-group list-group-flush" id="topicList">
+                            <!-- Populated by JS -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PRODUCE SECTION -->
+            <div id="produce" class="page-section d-none">
+                <div class="card bg-secondary text-light border-0">
+                    <div class="card-body">
+                        <h5 class="card-title mb-4">Produce Message</h5>
+                        <form id="produceForm">
+                            <div class="mb-3">
+                                <label class="form-label">Topic</label>
+                                <input type="text" class="form-control bg-dark text-light border-dark" id="pTopic" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Key (Optional)</label>
+                                <input type="text" class="form-control bg-dark text-light border-dark" id="pKey">
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col">
+                                    <label class="form-label">Message ID (Optional, for Exactly-Once)</label>
+                                    <input type="text" class="form-control bg-dark text-light border-dark" id="pMessageID">
+                                </div>
+                                <div class="col">
+                                    <label class="form-label">Producer ID (Optional)</label>
+                                    <input type="number" class="form-control bg-dark text-light border-dark" id="pProducerID" value="1">
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Value</label>
+                                <textarea class="form-control bg-dark text-light border-dark" id="pValue" rows="4" required></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-send"></i> Send Message</button>
+                        </form>
+                        <div id="produceResult" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CONSUME SECTION -->
+            <div id="consume" class="page-section d-none">
+                <div class="card bg-secondary text-light border-0 mb-4">
+                    <div class="card-body">
+                        <h5 class="card-title mb-4">Consume Messages</h5>
+                        <form id="consumeForm" class="row g-3 align-items-end">
+                            <div class="col-md-5">
+                                <label class="form-label">Topic</label>
+                                <input type="text" class="form-control bg-dark text-light border-dark" id="cTopic" required>
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label">Consumer Group (Optional)</label>
+                                <input type="text" class="form-control bg-dark text-light border-dark" id="cGroup">
+                            </div>
+                            <div class="col-md-5 mt-2">
+                                <label class="form-label">Start Time (Unix ms, Optional)</label>
+                                <input type="number" class="form-control bg-dark text-light border-dark" id="cStartTime">
+                            </div>
+                            <div class="col-md-5 mt-2">
+                                <label class="form-label">End Time (Unix ms, Optional)</label>
+                                <input type="number" class="form-control bg-dark text-light border-dark" id="cEndTime">
+                            </div>
+                            <div class="col-md-2 mt-2">
+                                <button type="submit" class="btn btn-primary w-100"><i class="bi bi-download"></i> Fetch</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                <div class="card bg-secondary text-light border-0">
+                    <div class="card-body p-0">
+                        <div class="bg-dark p-3 rounded" style="max-height: 400px; overflow-y: auto;">
+                            <pre id="consumeResult" class="text-success mb-0" style="font-size: 0.9rem;">Waiting for messages...</pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CONSUMER GROUPS SECTION -->
+            <div id="groups" class="page-section d-none">
+                <div class="d-flex justify-content-between mb-3">
+                    <h4>Consumer Groups</h4>
+                    <button class="btn btn-primary btn-sm" id="refreshGroupsBtn"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+                </div>
+                <div class="card bg-secondary text-light border-0">
+                    <div class="card-body">
+                        <div id="groupsList">
+                            <!-- Populated by JS -->
+                            <p class="text-muted">No group data available yet.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SCHEMA REGISTRY SECTION -->
+            <div id="schema" class="page-section d-none">
+                <div class="card bg-secondary text-light border-0">
+                    <div class="card-body">
+                        <h5 class="card-title mb-4">Register JSON Schema</h5>
+                        <form id="schemaForm">
+                            <div class="mb-3">
+                                <label class="form-label">Topic</label>
+                                <input type="text" class="form-control bg-dark text-light border-dark" id="sTopic" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">JSON Schema</label>
+                                <textarea class="form-control bg-dark text-light border-dark" id="sSchema" rows="6" required>{"required":["id", "name"]}</textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-file-earmark-code"></i> Register Schema</button>
+                        </form>
+                        <div id="schemaResult" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI INSIGHTS SECTION -->
+            <div id="insights" class="page-section d-none">
+                <div class="d-flex justify-content-between mb-3">
+                    <h4>AI Cluster Insights</h4>
+                    <button class="btn btn-primary btn-sm" id="refreshInsightsBtn"><i class="bi bi-cpu"></i> Analyze</button>
+                </div>
+                <div class="card bg-secondary text-light border-0 mb-3">
+                    <div class="card-body">
+                        <h5>System Load: <span id="aiCpuLoad">--</span>%</h5>
+                    </div>
+                </div>
+                <div class="card bg-secondary text-light border-0">
+                    <div class="card-body">
+                        <div id="insightsList">
+                            <p class="text-muted">Click analyze to get AI insights.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Custom Logic -->
+    <script src="app.js"></script>
+</body>
+</html>

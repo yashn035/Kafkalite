@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: kafkalite-api
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: ./api-gateway
+    envVars:
+      - key: PORT
+        value: 8082
+
+  - type: web
+    name: kafkalite-ui
+    env: docker
+    dockerfilePath: ./web/Dockerfile
+    envVars:
+      - key: PORT
+        value: 3001
+    dependsOn:
+      - kafkalite-api

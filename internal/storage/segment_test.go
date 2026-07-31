@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestSegment(t *testing.T) {
@@ -15,7 +16,7 @@ func TestSegment(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	segPath := filepath.Join(tmpDir, "test.log")
-	seg, err := NewSegment(segPath)
+	seg, err := NewSegment(segPath, 100*time.Millisecond, 65536)
 	if err != nil {
 		t.Fatalf("failed to create segment: %v", err)
 	}
@@ -23,7 +24,7 @@ func TestSegment(t *testing.T) {
 
 	k1 := []byte("key1")
 	v1 := []byte("value1")
-	off1, err := seg.Append(k1, v1)
+	off1, err := seg.AppendBatch(k1, v1)
 	if err != nil {
 		t.Fatalf("failed append 1: %v", err)
 	}
@@ -33,7 +34,7 @@ func TestSegment(t *testing.T) {
 
 	k2 := []byte("key-two")
 	v2 := []byte("val-two-longer")
-	off2, err := seg.Append(k2, v2)
+	off2, err := seg.AppendBatch(k2, v2)
 	if err != nil {
 		t.Fatalf("failed append 2: %v", err)
 	}
